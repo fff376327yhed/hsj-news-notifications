@@ -1,0 +1,16 @@
+{
+  "name": "hsj-news-notifications",
+  "version": "1.0.0",
+  "description": "해정뉴스 백그라운드 알림 전송 시스템",
+  "main": "send-notifications.js",
+  "scripts": {
+    "start": "node send-notifications.js",
+    "test": "echo \"Test passed\""
+  },
+  "keywords": ["fcm", "firebase", "notifications"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
+}
