@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔔 알림 테스트 도구</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #718096;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .step {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .step h3 {
+            color: #2d3748;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .step-number {
+            background: #667eea;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 12px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-test {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-test:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+        }
+        
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 12px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+            display: block;
+        }
+        
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+            display: block;
+        }
+        
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+            border: 1px solid #90cdf4;
+            display: block;
+        }
+        
+        .info-box {
+            background: #edf2f7;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+        
+        code {
+            background: #2d3748;
+            color: #48bb78;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 백그라운드 알림 테스트</h1>
+        <p class="subtitle">웹사이트 밖에서도 알림이 오는지 확인하세요</p>
+        
+        <div class="step">
+            <h3>
+                <span class="step-number">1</span>
+                알림 권한 요청
+            </h3>
+            <p style="color: #718096; font-size: 14px; margin-bottom: 12px;">
+                브라우저에서 알림을 표시할 수 있도록 권한을 허용해주세요.
+            </p>
+            <button class="btn-primary" onclick="requestPermission()">
+                📱 알림 권한 허용하기
+            </button>
+            <div id="permissionStatus" class="status"></div>
+        </div>
+        
+        <div class="step">
+            <h3>
+                <span class="step-number">2</span>
+                FCM 토큰 등록
+            </h3>
+            <p style="color: #718096; font-size: 14px; margin-bottom: 12px;">
+                Firebase Cloud Messaging 토큰을 생성하고 등록합니다.
+            </p>
+            <button class="btn-primary" onclick="registerToken()">
+                🔑 토큰 등록하기
+            </button>
+            <div id="tokenStatus" class="status"></div>
+        </div>
+        
+        <div class="step">
+            <h3>
+                <span class="step-number">3</span>
+                테스트 알림 전송
+            </h3>
+            <p style="color: #718096; font-size: 14px; margin-bottom: 12px;">
+                10초 후에 테스트 알림이 전송됩니다. <strong>이 탭을 닫거나 최소화하세요!</strong>
+            </p>
+            <button class="btn-test" onclick="sendTestNotification()">
+                🚀 테스트 알림 보내기 (10초 대기)
+            </button>
+            <div id="testStatus" class="status"></div>
+        </div>
+        
+        <div class="info-box">
+            <strong>💡 테스트 방법:</strong><br>
+            1. 위 3단계를 순서대로 완료하세요<br>
+            2. "테스트 알림 보내기" 버튼 클릭<br>
+            3. 즉시 이 <strong>브라우저 탭을 닫거나 다른 앱으로 전환</strong>하세요<br>
+            4. 10초 후 알림이 오면 성공! 🎉<br><br>
+            
+            <strong>⚠️ 주의사항:</strong><br>
+            • 탭을 열어두면 백그라운드 알림이 아닌 일반 알림이 옵니다<br>
+            • iOS Safari는 백그라운드 알림을 지원하지 않습니다<br>
+            • Chrome, Edge, Firefox에서 테스트하세요
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <script>
+        // Firebase 초기화
+        firebase.initializeApp({
+            apiKey: "AIzaSyDgooYtVr8-jm15-fx_WvGLCDxonLpNPuU",
+            authDomain: "hsj-news.firebaseapp.com",
+            databaseURL: "https://hsj-news-default-rtdb.firebaseio.com",
+            projectId: "hsj-news",
+            storageBucket: "hsj-news.firebasestorage.app",
+            messagingSenderId: "437842430700",
+            appId: "1:437842430700:web:e3822bde4cfecdc04633c9"
+        });
+        
+        const messaging = firebase.messaging();
+        const db = firebase.database();
+        
+        let currentToken = null;
+        
+        // 1. 알림 권한 요청
+        async function requestPermission() {
+            const statusDiv = document.getElementById('permissionStatus');
+            
+            try {
+                const permission = await Notification.requestPermission();
+                
+                if (permission === 'granted') {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = '✅ 알림 권한이 허용되었습니다!';
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = '❌ 알림 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.';
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '❌ 오류: ' + error.message;
+            }
+        }
+        
+        // 2. FCM 토큰 등록
+        async function registerToken() {
+            const statusDiv = document.getElementById('tokenStatus');
+            
+            try {
+                statusDiv.className = 'status info';
+                statusDiv.textContent = '⏳ Service Worker 등록 중...';
+                
+                // Service Worker 등록
+                const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js', {
+                    scope: '/',
+                    updateViaCache: 'none'
+                });
+                
+                await navigator.serviceWorker.ready;
+                
+                statusDiv.textContent = '⏳ FCM 토큰 발급 중...';
+                
+                // FCM 토큰 발급
+                currentToken = await messaging.getToken({
+                    serviceWorkerRegistration: registration,
+                    vapidKey: "BFJBBAv_qOw_aklFbE89r_cuCArMJkMK56Ryj9M1l1a3qv8CuHCJ-fKALtOn4taF7Pjwo2bjfoOuewEKBqRBtCo"
+                });
+                
+                // 테스트용 사용자 ID로 저장
+                const testUserId = 'test_user_' + Date.now();
+                await db.ref(`users/${testUserId}/fcmTokens/test`).set({
+                    token: currentToken,
+                    updatedAt: Date.now(),
+                    browser: navigator.userAgent.substring(0, 100),
+                    platform: navigator.platform
+                });
+                
+                // 로컬에 저장
+                localStorage.setItem('testUserId', testUserId);
+                
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ 토큰 등록 완료!<br><code>${currentToken.substring(0, 30)}...</code>`;
+                
+                // 포그라운드 메시지 리스너
+                messaging.onMessage((payload) => {
+                    console.log('포그라운드 메시지:', payload);
+                    new Notification(payload.notification.title, {
+                        body: payload.notification.body,
+                        icon: '/favicon/favicon-32x32.png'
+                    });
+                });
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '❌ 오류: ' + error.message;
+                console.error('토큰 등록 오류:', error);
+            }
+        }
+        
+        // 3. 테스트 알림 전송
+        async function sendTestNotification() {
+            const statusDiv = document.getElementById('testStatus');
+            const testUserId = localStorage.getItem('testUserId');
+            
+            if (!testUserId || !currentToken) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '❌ 먼저 위의 1, 2단계를 완료해주세요!';
+                return;
+            }
+            
+            try {
+                // 알림 데이터 저장
+                const notificationId = 'test_' + Date.now();
+                await db.ref(`notifications/${testUserId}/${notificationId}`).set({
+                    title: '🎉 백그라운드 알림 테스트',
+                    text: '성공! 웹사이트를 닫아도 알림이 왔습니다!',
+                    articleId: '',
+                    timestamp: Date.now(),
+                    read: false,
+                    pushed: false,
+                    type: 'test'
+                });
+                
+                statusDiv.className = 'status info';
+                statusDiv.innerHTML = `
+                    ⏰ 10초 후 알림이 전송됩니다!<br>
+                    <strong>지금 바로 이 탭을 닫거나 다른 앱으로 전환하세요!</strong><br>
+                    <span style="font-size: 12px; opacity: 0.8;">GitHub Actions가 5분마다 알림을 확인합니다.</span>
+                `;
+                
+                // 10초 카운트다운
+                let countdown = 10;
+                const timer = setInterval(() => {
+                    countdown--;
+                    if (countdown > 0) {
+                        statusDiv.innerHTML = `
+                            ⏰ ${countdown}초 후 알림 전송...<br>
+                            <strong>탭을 닫으세요!</strong>
+                        `;
+                    } else {
+                        clearInterval(timer);
+                        statusDiv.className = 'status success';
+                        statusDiv.innerHTML = `
+                            ✅ 알림이 전송되었습니다!<br>
+                            백그라운드에서 알림을 확인하세요 (최대 5분 소요)
+                        `;
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '❌ 오류: ' + error.message;
+                console.error('테스트 알림 전송 오류:', error);
+            }
+        }
+    </script>
+</body>
+</html>
