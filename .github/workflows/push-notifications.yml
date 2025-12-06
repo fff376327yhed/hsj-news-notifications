@@ -2,8 +2,8 @@ name: 📱 Push Notifications Sender
 
 on:
   schedule:
-    # 5분마다 실행 (UTC 기준)
-    - cron: '*/5 * * * *'
+    # 15분마다 실행으로 변경 (배터리 절약)
+    - cron: '*/15 * * * *'
   
   # 수동 실행 버튼
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
 jobs:
   send-notifications:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     
     steps:
       - name: 📥 코드 체크아웃
@@ -24,12 +24,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
       
       - name: 📦 의존성 설치
-        run: npm install --production
+        run: npm ci --production
       
       - name: 🚀 알림 전송 실행
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
         run: node send-notifications.js
+        
+      - name: 📊 결과 요약
+        if: always()
+        run: echo "알림 전송 작업 완료"
