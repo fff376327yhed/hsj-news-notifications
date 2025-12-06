@@ -35,6 +35,7 @@ async function sendNotifications() {
     let totalSent = 0;
     let totalFailed = 0;
     let processedUsers = 0;
+    let skippedUsers = 0;
     
     console.log(`👥 총 ${Object.keys(notificationsData).length}명의 알림 확인 중...`);
     
@@ -44,11 +45,13 @@ async function sendNotifications() {
       
       // FCM 토큰 없으면 스킵
       if (!user || !user.fcmTokens) {
+        skippedUsers++;
         continue;
       }
       
       // 알림이 비활성화되어 있으면 스킵
       if (user.notificationsEnabled === false) {
+        skippedUsers++;
         continue;
       }
       
@@ -76,18 +79,59 @@ async function sendNotifications() {
       
       // 4. 각 알림 전송
       for (const notification of unreadNotifications) {
+        // 알림 메시지 구성 (data 페이로드 사용)
         const message = {
-          notification: {
+          data: {
             title: notification.title || '📰 해정뉴스',
             body: notification.text || '새로운 알림이 있습니다',
-          },
-          data: {
+            text: notification.text || '새로운 알림이 있습니다', // 호환성
             articleId: notification.articleId || '',
             type: notification.type || 'notification',
             notificationId: notification.id,
-            click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            timestamp: Date.now().toString()
           },
-          tokens: tokens
+          tokens: tokens,
+          // Android 설정
+          android: {
+            priority: 'high',
+            notification: {
+              title: notification.title || '📰 해정뉴스',
+              body: notification.text || '새로운 알림이 있습니다',
+              icon: 'ic_notification',
+              color: '#c62828',
+              sound: 'default',
+              channelId: 'default'
+            }
+          },
+          // iOS 설정
+          apns: {
+            payload: {
+              aps: {
+                alert: {
+                  title: notification.title || '📰 해정뉴스',
+                  body: notification.text || '새로운 알림이 있습니다'
+                },
+                sound: 'default',
+                badge: 1
+              }
+            }
+          },
+          // 웹 설정
+          webpush: {
+            notification: {
+              title: notification.title || '📰 해정뉴스',
+              body: notification.text || '새로운 알림이 있습니다',
+              icon: '/favicon/android-icon-192x192.png',
+              badge: '/favicon/favicon-16x16.png',
+              vibrate: [200, 100, 200],
+              requireInteraction: false
+            },
+            fcmOptions: {
+              link: notification.articleId ? 
+                `https://yourdomain.com/?page=article&id=${notification.articleId}` : 
+                'https://yourdomain.com/'
+            }
+          }
         };
         
         try {
@@ -102,11 +146,13 @@ async function sendNotifications() {
           
           // 성공한 경우 pushed 플래그 설정
           if (response.successCount > 0) {
-            await db.ref(`notifications/${uid}/${notification.id}/pushed`).set(true);
-            await db.ref(`notifications/${uid}/${notification.id}/pushedAt`).set(Date.now());
+            await db.ref(`notifications/${uid}/${notification.id}`).update({
+              pushed: true,
+              pushedAt: Date.now()
+            });
           }
           
-          // 실패한 토큰 제거 (만료/삭제된 토큰)
+          // 실패한 토큰 처리
           if (response.failureCount > 0) {
             const tokensToRemove = [];
             
@@ -114,19 +160,28 @@ async function sendNotifications() {
               if (!resp.success) {
                 const errorCode = resp.error?.code;
                 
+                console.log(`     ⚠️ 오류 [${idx}]: ${errorCode}`);
+                
                 // 토큰이 유효하지 않은 경우만 삭제
                 if (errorCode === 'messaging/invalid-registration-token' ||
                     errorCode === 'messaging/registration-token-not-registered') {
                   tokensToRemove.push(tokens[idx]);
-                  console.log(`     🗑️ 무효 토큰 제거: ${tokens[idx].substring(0, 20)}...`);
                 }
               }
             });
             
             // DB에서 무효 토큰 제거
-            for (const token of tokensToRemove) {
-              const tokenKey = Buffer.from(token).toString('base64').substring(0, 20).replace(/[^a-zA-Z0-9]/g, '');
-              await db.ref(`users/${uid}/fcmTokens/${tokenKey}`).remove();
+            if (tokensToRemove.length > 0) {
+              console.log(`     🗑️ ${tokensToRemove.length}개 무효 토큰 제거 중...`);
+              
+              for (const token of tokensToRemove) {
+                const tokenKey = Buffer.from(token)
+                  .toString('base64')
+                  .substring(0, 20)
+                  .replace(/[^a-zA-Z0-9]/g, '');
+                
+                await db.ref(`users/${uid}/fcmTokens/${tokenKey}`).remove();
+              }
             }
           }
           
@@ -141,20 +196,56 @@ async function sendNotifications() {
     }
     
     // 5. 최종 결과
-    console.log('\n' + '='.repeat(50));
+    console.log('\n' + '='.repeat(60));
     console.log('📊 전송 완료 결과:');
     console.log(`   👥 처리된 사용자: ${processedUsers}명`);
+    console.log(`   ⏭️  건너뛴 사용자: ${skippedUsers}명`);
     console.log(`   ✅ 성공: ${totalSent}건`);
     console.log(`   ❌ 실패: ${totalFailed}건`);
-    console.log('='.repeat(50));
+    console.log('='.repeat(60));
     
     if (totalSent === 0 && processedUsers === 0) {
-      console.log('ℹ️ 전송할 알림이 없습니다.');
+      console.log('ℹ️  전송할 알림이 없습니다.');
     }
+    
+    // 6. 오래된 알림 정리 (7일 이상 된 알림 삭제)
+    await cleanOldNotifications();
     
   } catch (error) {
     console.error('❌ 알림 전송 중 오류 발생:', error);
     throw error;
+  }
+}
+
+// 오래된 알림 정리 함수
+async function cleanOldNotifications() {
+  console.log('\n🧹 오래된 알림 정리 중...');
+  
+  try {
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const notificationsSnapshot = await db.ref('notifications').once('value');
+    const notificationsData = notificationsSnapshot.val() || {};
+    
+    let deletedCount = 0;
+    
+    for (const [uid, userNotifications] of Object.entries(notificationsData)) {
+      for (const [notifId, notif] of Object.entries(userNotifications)) {
+        // 7일 이상 된 알림 삭제
+        if (notif.timestamp < sevenDaysAgo) {
+          await db.ref(`notifications/${uid}/${notifId}`).remove();
+          deletedCount++;
+        }
+      }
+    }
+    
+    if (deletedCount > 0) {
+      console.log(`✅ ${deletedCount}개의 오래된 알림 삭제 완료`);
+    } else {
+      console.log('ℹ️  삭제할 오래된 알림 없음');
+    }
+    
+  } catch (error) {
+    console.error('⚠️ 알림 정리 중 오류:', error.message);
   }
 }
 
