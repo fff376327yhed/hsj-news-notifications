@@ -121,15 +121,15 @@ async function sendNotifications() {
             notification: {
               title: notification.title || '📰 해정뉴스',
               body: notification.text || '새로운 알림이 있습니다',
-              icon: '/favicon/android-icon-192x192.png',
-              badge: '/favicon/favicon-16x16.png',
+              icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
+              badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
               vibrate: [200, 100, 200],
               requireInteraction: false
             },
             fcmOptions: {
               link: notification.articleId ? 
-                `https://yourdomain.com/?page=article&id=${notification.articleId}` : 
-                'https://yourdomain.com/'
+                `https://fff376327yhed.github.io/hsj_news.io/?page=article&id=${notification.articleId}` : 
+                'https://fff376327yhed.github.io/hsj_news.io/'
             }
           }
         };
