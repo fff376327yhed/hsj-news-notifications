@@ -8,9 +8,13 @@ on:
   # 수동 실행 버튼
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   send-notifications:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     
     steps:
       - name: 📥 코드 체크아웃
@@ -20,10 +24,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
       
       - name: 📦 의존성 설치
-        run: |
-          npm install firebase-admin
+        run: npm ci --production
       
       - name: 🚀 알림 전송 실행
         env:
