@@ -39,6 +39,9 @@ async function sendNotifications() {
     
     console.log(`👥 총 ${Object.keys(notificationsData).length}명의 알림 확인 중...`);
     
+    // ⭐ 현재 시간 (5분 이내 알림만 처리)
+    const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+    
     // 3. 각 사용자별 처리
     for (const [uid, userNotifications] of Object.entries(notificationsData)) {
       const user = usersData[uid];
@@ -55,9 +58,23 @@ async function sendNotifications() {
         continue;
       }
       
-      // 읽지 않았고, 아직 푸시 안 보낸 알림만 필터링
+      // ⭐ 중복 방지 강화: 읽지 않았고, 아직 푸시 안 보냈고, 5분 이내 생성된 알림만 필터링
       const unreadNotifications = Object.entries(userNotifications)
-        .filter(([_, notif]) => !notif.read && !notif.pushed)
+        .filter(([_, notif]) => {
+          // 읽지 않았고
+          if (notif.read) return false;
+          
+          // 이미 푸시 보냈으면 제외
+          if (notif.pushed) return false;
+          
+          // ⭐ 5분 이내 생성된 알림만 (오래된 알림 중복 방지)
+          if (notif.timestamp < fiveMinutesAgo) {
+            console.log(`  ⏭️ 오래된 알림 스킵: ${notif.title}`);
+            return false;
+          }
+          
+          return true;
+        })
         .map(([id, notif]) => ({ id, ...notif }));
       
       if (unreadNotifications.length === 0) {
@@ -79,12 +96,26 @@ async function sendNotifications() {
       
       // 4. 각 알림 전송
       for (const notification of unreadNotifications) {
+        // ⭐ 전송 전 다시 한 번 pushed 상태 확인 (동시 실행 방지)
+        const recheck = await db.ref(`notifications/${uid}/${notification.id}/pushed`).once('value');
+        if (recheck.val() === true) {
+          console.log(`  ⏭️ 이미 전송된 알림: ${notification.title}`);
+          continue;
+        }
+        
+        // ⭐ 즉시 pushed 플래그 설정 (다른 워커가 중복 전송하지 않도록)
+        await db.ref(`notifications/${uid}/${notification.id}`).update({
+          pushed: true,
+          pushedAt: Date.now(),
+          pushAttemptedAt: Date.now() // 시도 시간 기록
+        });
+        
         // 알림 메시지 구성 (data 페이로드 사용)
         const message = {
           data: {
             title: notification.title || '📰 해정뉴스',
             body: notification.text || '새로운 알림이 있습니다',
-            text: notification.text || '새로운 알림이 있습니다', // 호환성
+            text: notification.text || '새로운 알림이 있습니다',
             articleId: notification.articleId || '',
             type: notification.type || 'notification',
             notificationId: notification.id,
@@ -100,7 +131,9 @@ async function sendNotifications() {
               icon: 'ic_notification',
               color: '#c62828',
               sound: 'default',
-              channelId: 'default'
+              channelId: 'default',
+              // ⭐ 중복 방지: tag 사용
+              tag: notification.id
             }
           },
           // iOS 설정
@@ -112,7 +145,9 @@ async function sendNotifications() {
                   body: notification.text || '새로운 알림이 있습니다'
                 },
                 sound: 'default',
-                badge: 1
+                badge: 1,
+                // ⭐ 중복 방지: thread-id 사용
+                'thread-id': notification.id
               }
             }
           },
@@ -124,7 +159,10 @@ async function sendNotifications() {
               icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
               badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
               vibrate: [200, 100, 200],
-              requireInteraction: false
+              requireInteraction: false,
+              // ⭐ 중복 방지: tag 사용
+              tag: notification.id,
+              renotify: false // 같은 tag의 알림은 소리 안 남
             },
             fcmOptions: {
               link: notification.articleId ? 
@@ -144,13 +182,12 @@ async function sendNotifications() {
           totalSent += response.successCount;
           totalFailed += response.failureCount;
           
-          // 성공한 경우 pushed 플래그 설정
-          if (response.successCount > 0) {
-            await db.ref(`notifications/${uid}/${notification.id}`).update({
-              pushed: true,
-              pushedAt: Date.now()
-            });
-          }
+          // ⭐ 전송 결과 기록
+          await db.ref(`notifications/${uid}/${notification.id}`).update({
+            pushSuccessCount: response.successCount,
+            pushFailureCount: response.failureCount,
+            lastPushAt: Date.now()
+          });
           
           // 실패한 토큰 처리
           if (response.failureCount > 0) {
@@ -188,10 +225,17 @@ async function sendNotifications() {
         } catch (error) {
           console.error(`  ❌ 전송 오류:`, error.message);
           totalFailed++;
+          
+          // ⭐ 오류 발생 시 pushed 플래그 롤백
+          await db.ref(`notifications/${uid}/${notification.id}`).update({
+            pushed: false,
+            pushError: error.message,
+            pushErrorAt: Date.now()
+          });
         }
         
-        // API 제한 방지를 위한 딜레이 (100ms)
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // API 제한 방지를 위한 딜레이 (200ms로 증가)
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
     
@@ -252,7 +296,7 @@ async function cleanOldNotifications() {
 // 실행
 sendNotifications()
   .then(() => {
-    console.log('\n✅ 작업 완료!');
+    console.log('\n✅ 작업 완료! (5분 간격 실행)');
     process.exit(0);
   })
   .catch((error) => {
