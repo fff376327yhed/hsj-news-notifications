@@ -1,0 +1,39 @@
+name: 📈 Stock Price Updater
+
+on:
+  schedule:
+    # 5분마다 실행
+    - cron: '*/5 * * * *'
+  
+  # 수동 실행 버튼
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    
+    steps:
+      - name: 📥 코드 체크아웃
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Node.js 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: 📦 의존성 설치
+        run: npm install --omit=dev
+      
+      - name: 📈 주식 가격 업데이트
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+        run: node stock-price-updater.js
+        
+      - name: 📊 결과 요약
+        if: always()
+        run: echo "✅ 주식 가격 업데이트 완료 (5분 간격)"
