@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 
 console.log('🔔 백그라운드 알림 전송 시작...');
 console.log('⏰ 실행 시간:', new Date().toLocaleString('ko-KR'));
+console.log('⚡ 5분 간격 실행 (GitHub Actions 최소 주기)');
 
 // Firebase Admin 초기화
 try {
@@ -69,7 +70,6 @@ async function sendNotifications() {
           
           // ⭐ 5분 이내 생성된 알림만 (오래된 알림 중복 방지)
           if (notif.timestamp < fiveMinutesAgo) {
-            console.log(`  ⏭️ 오래된 알림 스킵: ${notif.title}`);
             return false;
           }
           
@@ -107,7 +107,7 @@ async function sendNotifications() {
         await db.ref(`notifications/${uid}/${notification.id}`).update({
           pushed: true,
           pushedAt: Date.now(),
-          pushAttemptedAt: Date.now() // 시도 시간 기록
+          pushAttemptedAt: Date.now()
         });
         
         // 알림 메시지 구성 (data 페이로드 사용)
@@ -132,8 +132,8 @@ async function sendNotifications() {
               color: '#c62828',
               sound: 'default',
               channelId: 'default',
-              // ⭐ 중복 방지: tag 사용
-              tag: notification.id
+              tag: notification.id,  // ⭐ 중복 방지
+              clickAction: 'FLUTTER_NOTIFICATION_CLICK'
             }
           },
           // iOS 설정
@@ -146,8 +146,8 @@ async function sendNotifications() {
                 },
                 sound: 'default',
                 badge: 1,
-                // ⭐ 중복 방지: thread-id 사용
-                'thread-id': notification.id
+                'thread-id': notification.id,  // ⭐ 중복 방지
+                'mutable-content': 1
               }
             }
           },
@@ -160,9 +160,8 @@ async function sendNotifications() {
               badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
               vibrate: [200, 100, 200],
               requireInteraction: false,
-              // ⭐ 중복 방지: tag 사용
-              tag: notification.id,
-              renotify: false // 같은 tag의 알림은 소리 안 남
+              tag: notification.id,  // ⭐ 중복 방지
+              renotify: false
             },
             fcmOptions: {
               link: notification.articleId ? 
@@ -234,8 +233,8 @@ async function sendNotifications() {
           });
         }
         
-        // API 제한 방지를 위한 딜레이 (200ms로 증가)
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // ⭐ API 제한 방지를 위한 딜레이 (100ms)
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
     
@@ -296,7 +295,8 @@ async function cleanOldNotifications() {
 // 실행
 sendNotifications()
   .then(() => {
-    console.log('\n✅ 작업 완료! (5분 간격 실행)');
+    console.log('\n✅ 작업 완료! (5분 간격 실행 - 최소 주기)');
+    console.log('⏰ 다음 실행: 약 5분 후');
     process.exit(0);
   })
   .catch((error) => {
