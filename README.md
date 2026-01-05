@@ -3,35 +3,58 @@
 ## 🚀 자동화 시스템
 
 ### 📱 푸시 알림 시스템
-- ⏰ **5분마다 자동 실행** (GitHub Actions Cron)
+- ⏰ **5분마다 자동 실행** (GitHub Actions - 최소 허용 주기)
 - 🔔 **읽지 않은 알림 자동 전송**
 - 📱 **FCM(Firebase Cloud Messaging) 사용**
 - 🔒 **안전한 키 관리** (GitHub Secrets)
+- ⚡ **중복 방지 강화** (Tag/Thread-ID + pushed 플래그)
 
 ### 📈 주식 가격 변동 시스템
-- ⏰ **5분마다 자동 가격 변동**
+- ⏰ **5분마다 자동 가격 변동** (최소 주기)
 - 📊 **실제 시장 변동률 반영** (종목별 차등)
 - 🔔 **보유 주식 가격 알림** (상승/하락)
 - 📉 **실시간 히스토리 기록** (최근 100개)
 
-## 📊 주식 시스템 기능
+## ✨ 주요 개선사항
 
-### 종목 특성
-- **전자**: 안정적 성장 (변동률: -2.5% ~ +2.5%)
-- **음식**: 매우 안정적 (변동률: -2% ~ +2%)
-- **로봇**: 고성장주 (변동률: -4% ~ +5%)
-- **전기**: 중간 변동 (변동률: -3% ~ +3%)
-- **약품**: 성장주 (변동률: -3.5% ~ +4.5%)
-- **공업**: 안정적 (변동률: -2.5% ~ +2.5%)
-- **항공우주**: 고변동성 (변동률: -5% ~ +6%)
-- **성장판**: 초고변동성 (변동률: -6% ~ +8%)
-- **키작음**: 고변동성 (변동률: -5.5% ~ +6.5%)
+### Quill 에디터 중복 문제 해결
+```javascript
+// ✅ 기존 에디터 완전히 제거 후 재생성
+// ✅ 이벤트 리스너 중복 방지
+// ✅ 페이지 이동 시 안정적인 초기화
+```
 
-### 알림 설정
-사용자는 알림 설정 페이지에서 다음을 설정할 수 있습니다:
-- 📈 **상승률 알림**: X% 이상 상승 시 알림
-- 📉 **하락률 알림**: X% 이상 하락 시 알림
-- 🔕 **비활성화**: 0으로 설정 시 알림 없음 (기본값)
+### 메신저 → 알림 확인 기능 변경
+```javascript
+// ✅ 1대1 채팅 → 알림 목록 확인으로 변경
+// ✅ 알림 필터링 (전체/새 기사/댓글/내 기사/주식)
+// ✅ 읽음/안읽음 상태 관리
+// ✅ 모두 읽음 처리 기능
+// ✅ 시간 표시 (방금 전, N분 전, N시간 전)
+```
+
+### GitHub Actions 최적화
+```yaml
+# ✅ 5분마다 실행 (최소 허용 주기)
+# ✅ npm 캐시 활성화 (속도 향상)
+# ✅ npm ci 사용 (더 빠른 설치)
+# ✅ 중복 실행 방지 로직 강화
+```
+
+## 📊 알림 시스템 기능
+
+### 알림 타입
+- **📰 새 기사**: 팔로우한 사용자의 새 글
+- **💬 댓글**: 내가 쓴 댓글에 대한 답글
+- **📝 내 기사**: 내 기사에 달린 댓글
+- **📈 주식 알림**: 보유 주식 가격 변동 알림
+
+### 중복 방지 메커니즘
+1. **5분 이내 알림만 처리** - 오래된 알림 제외
+2. **pushed 플래그** - 이미 전송된 알림 스킵
+3. **Tag/Thread-ID** - 같은 알림 덮어쓰기
+4. **동시 실행 방지** - 전송 전 pushed 재확인
+5. **재시도 로직** - 실패 시 플래그 롤백
 
 ## 🔧 설정 방법
 
@@ -43,50 +66,43 @@
 
 ### Firebase 데이터 구조
 ```
-users/
-  {uid}/
-    stockAlertSettings/
-      riseThreshold: 2.0    # 2% 이상 상승 시 알림
-      fallThreshold: 2.0    # 2% 이상 하락 시 알림
-      updatedAt: timestamp
-
-stocks/
-  prices/
-    {stockId}/
-      price: number
-      change: number
-      changePercent: number
-      lastUpdate: timestamp
-      history: []
-  
-  userStocks/
-    {uid}/
-      {stockId}/
-        quantity: number
-        totalCost: number
-        averagePrice: number
-
 notifications/
   {uid}/
     {notificationId}/
       title: string
       text: string
-      type: "stock_alert" | "notification"
-      stockId: string (if stock_alert)
-      change: number
-      changePercent: number
-      alertType: "rise" | "fall"
+      type: "article" | "comment" | "myArticleComment" | "stock_alert"
+      articleId: string (optional)
+      timestamp: number
       read: boolean
       pushed: boolean
+      pushedAt: number (optional)
+      pushSuccessCount: number (optional)
+      pushFailureCount: number (optional)
+
+users/
+  {uid}/
+    fcmTokens/
+      {tokenId}/
+        token: string
+        createdAt: number
+    notificationsEnabled: boolean
+    stockAlertSettings/
+      riseThreshold: number
+      fallThreshold: number
 ```
 
 ## 📝 수동 실행
 
 ### 알림 전송 수동 실행
-Actions 탭 → "Push Notifications Sender" → "Run workflow" 클릭
+1. GitHub 저장소 → Actions 탭
+2. "Push Notifications Sender" 선택
+3. "Run workflow" 클릭
 
 ### 주식 가격 업데이트 수동 실행
-Actions 탭 → "Stock Price Updater" → "Run workflow" 클릭
+1. GitHub 저장소 → Actions 탭
+2. "Stock Price Updater" 선택
+3. "Run workflow" 클릭
 
 ## 📊 모니터링
 
@@ -97,61 +113,81 @@ Actions 탭 → "Stock Price Updater" → "Run workflow" 클릭
 ## 🔄 시스템 흐름
 
 ### 5분마다 자동 실행
-1. **stock-price-updater.js** 실행
-   - 모든 주식 가격 업데이트 (종목별 변동률 적용)
-   - 히스토리 기록
-   - 보유 주식 체크
-   - 설정된 임계값 확인
-   - 알림 생성
-
-2. **send-notifications.js** 실행
-   - 읽지 않은 알림 조회
-   - FCM 토큰 확인
-   - 푸시 알림 전송
-   - 전송 결과 기록
+1. **stock-price-updater.js** 실행 (주식 가격 업데이트)
+2. **send-notifications.js** 실행 (푸시 알림 전송)
+3. 무효 토큰 자동 제거
+4. 7일 이상 오래된 알림 자동 삭제
 
 ## 🎯 주요 특징
 
-### 중복 방지
-- ⏰ **5분 이내 생성된 알림만 처리**
-- 🏷️ **Tag/Thread-ID 사용** (같은 알림 중복 방지)
-- ✅ **pushed 플래그** (이미 전송된 알림 제외)
-- 🔄 **재시도 로직** (실패 시 플래그 롤백)
-
 ### 효율성
-- 📦 **배치 처리** (multicast 전송)
+- ⚡ **npm 캐시 활성화** - 빠른 의존성 설치
+- 📦 **배치 처리** - multicast 전송
 - 🗑️ **무효 토큰 자동 제거**
 - 🧹 **7일 이상 오래된 알림 자동 삭제**
-- ⚡ **API 제한 방지** (요청 간 딜레이)
+- ⏱️ **API 제한 방지** (요청 간 100ms 딜레이)
+
+### 안정성
+- 🔒 **동시 실행 방지** - pushed 플래그 사용
+- 🔄 **재시도 로직** - 실패 시 플래그 롤백
+- 📊 **상세 로그** - 성공/실패 건수 기록
+- ⚠️ **에러 처리** - 각 단계별 try-catch
 
 ## 🛠️ 개발 환경
 
 - **Node.js**: 20.x
 - **Firebase Admin SDK**: 12.0.0
-- **GitHub Actions**: Cron Schedule
+- **GitHub Actions**: Cron Schedule (5분 간격)
 
 ## 📁 파일 구조
 
 ```
 .github/workflows/
-  ├── push-notifications.yml       # 알림 전송 워크플로우
-  └── stock-price-updater.yml      # 주식 가격 업데이트 워크플로우
+  ├── push-notifications.yml       # 알림 전송 워크플로우 (5분)
+  └── stock-price-updater.yml      # 주식 가격 업데이트 (5분)
 
 send-notifications.js              # 알림 전송 스크립트
 stock-price-updater.js             # 주식 가격 업데이트 스크립트
 package.json                       # 의존성 관리
+README.md                          # 문서
 ```
 
 ## ⚠️ 주의사항
 
-- 알림 설정이 **기본적으로 비활성화**(0) 되어 있습니다
-- 사용자가 직접 임계값을 설정해야 알림을 받습니다
-- 주식 가격 변동은 **보유 주식에 대해서만** 알림이 전송됩니다
-- GitHub Actions 무료 사용량 제한에 주의하세요
+### GitHub Actions 제한
+- **5분이 최소 실행 주기입니다**
+- 더 빠른 실행이 필요하면 다른 서비스 사용 권장:
+  - Vercel Cron (1분 간격 가능)
+  - AWS Lambda + EventBridge (1분 간격)
+  - Google Cloud Scheduler (1분 간격)
+
+### 알림 설정
+- 사용자가 FCM 토큰을 등록해야 알림을 받습니다
+- 알림 비활성화 시 푸시가 전송되지 않습니다
+- 주식 알림은 보유 주식에 대해서만 전송됩니다
+
+### 배터리 절약
+- 5분 간격은 배터리 소모가 적당한 수준입니다
+- 더 자주 알림을 받고 싶다면 앱을 열어두세요
 
 ## 📞 문의
 
 문제가 발생하면 Issues 탭에 문의해주세요.
+
+## 🔄 업데이트 내역
+
+### v2.0.0 (2025-01-05)
+- ✅ Quill 에디터 중복 문제 해결
+- ✅ 메신저 → 알림 확인 기능으로 변경
+- ✅ GitHub Actions 최적화 (5분 주기)
+- ✅ npm 캐시 활성화
+- ✅ 중복 방지 로직 강화
+- ✅ 알림 필터링 기능 추가
+
+### v1.0.0 (2025-01-04)
+- 🎉 초기 릴리스
+- 📱 푸시 알림 시스템
+- 📈 주식 가격 변동 시스템
 
 ---
 
