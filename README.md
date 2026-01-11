@@ -1,4 +1,4 @@
-# 📰 해정뉴스 - 백그라운드 시스템
+# 📰 해정뉴스 - 백그라운드 알림 시스템
 
 ## 🚀 자동화 시스템
 
@@ -8,12 +8,6 @@
 - 📱 **FCM(Firebase Cloud Messaging) 사용**
 - 🔒 **안전한 키 관리** (GitHub Secrets)
 - ⚡ **중복 방지 강화** (Tag/Thread-ID + pushed 플래그)
-
-### 📈 주식 가격 변동 시스템
-- ⏰ **5분마다 자동 가격 변동** (최소 주기)
-- 📊 **실제 시장 변동률 반영** (종목별 차등)
-- 🔔 **보유 주식 가격 알림** (상승/하락)
-- 📉 **실시간 히스토리 기록** (최근 100개)
 
 ## ✨ 주요 개선사항
 
@@ -27,7 +21,7 @@
 ### 메신저 → 알림 확인 기능 변경
 ```javascript
 // ✅ 1대1 채팅 → 알림 목록 확인으로 변경
-// ✅ 알림 필터링 (전체/새 기사/댓글/내 기사/주식)
+// ✅ 알림 필터링 (전체/새 기사/댓글/내 기사)
 // ✅ 읽음/안읽음 상태 관리
 // ✅ 모두 읽음 처리 기능
 // ✅ 시간 표시 (방금 전, N분 전, N시간 전)
@@ -47,7 +41,6 @@
 - **📰 새 기사**: 팔로우한 사용자의 새 글
 - **💬 댓글**: 내가 쓴 댓글에 대한 답글
 - **📝 내 기사**: 내 기사에 달린 댓글
-- **📈 주식 알림**: 보유 주식 가격 변동 알림
 
 ### 중복 방지 메커니즘
 1. **5분 이내 알림만 처리** - 오래된 알림 제외
@@ -71,7 +64,7 @@ notifications/
     {notificationId}/
       title: string
       text: string
-      type: "article" | "comment" | "myArticleComment" | "stock_alert"
+      type: "article" | "comment" | "myArticleComment"
       articleId: string (optional)
       timestamp: number
       read: boolean
@@ -87,9 +80,6 @@ users/
         token: string
         createdAt: number
     notificationsEnabled: boolean
-    stockAlertSettings/
-      riseThreshold: number
-      fallThreshold: number
 ```
 
 ## 📝 수동 실행
@@ -97,11 +87,6 @@ users/
 ### 알림 전송 수동 실행
 1. GitHub 저장소 → Actions 탭
 2. "Push Notifications Sender" 선택
-3. "Run workflow" 클릭
-
-### 주식 가격 업데이트 수동 실행
-1. GitHub 저장소 → Actions 탭
-2. "Stock Price Updater" 선택
 3. "Run workflow" 클릭
 
 ## 📊 모니터링
@@ -113,10 +98,9 @@ users/
 ## 🔄 시스템 흐름
 
 ### 5분마다 자동 실행
-1. **stock-price-updater.js** 실행 (주식 가격 업데이트)
-2. **send-notifications.js** 실행 (푸시 알림 전송)
-3. 무효 토큰 자동 제거
-4. 7일 이상 오래된 알림 자동 삭제
+1. **send-notifications.js** 실행 (푸시 알림 전송)
+2. 무효 토큰 자동 제거
+3. 7일 이상 오래된 알림 자동 삭제
 
 ## 🎯 주요 특징
 
@@ -143,11 +127,9 @@ users/
 
 ```
 .github/workflows/
-  ├── push-notifications.yml       # 알림 전송 워크플로우 (5분)
-  └── stock-price-updater.yml      # 주식 가격 업데이트 (5분)
+  └── push-notifications.yml       # 알림 전송 워크플로우 (5분)
 
 send-notifications.js              # 알림 전송 스크립트
-stock-price-updater.js             # 주식 가격 업데이트 스크립트
 package.json                       # 의존성 관리
 README.md                          # 문서
 ```
@@ -164,7 +146,6 @@ README.md                          # 문서
 ### 알림 설정
 - 사용자가 FCM 토큰을 등록해야 알림을 받습니다
 - 알림 비활성화 시 푸시가 전송되지 않습니다
-- 주식 알림은 보유 주식에 대해서만 전송됩니다
 
 ### 배터리 절약
 - 5분 간격은 배터리 소모가 적당한 수준입니다
@@ -175,6 +156,11 @@ README.md                          # 문서
 문제가 발생하면 Issues 탭에 문의해주세요.
 
 ## 🔄 업데이트 내역
+
+### v2.1.0 (2025-01-11)
+- ✅ 주식 관련 기능 제거
+- ✅ 알림 시스템에만 집중
+- ✅ GitHub Actions 최적화
 
 ### v2.0.0 (2025-01-05)
 - ✅ Quill 에디터 중복 문제 해결
@@ -187,7 +173,6 @@ README.md                          # 문서
 ### v1.0.0 (2025-01-04)
 - 🎉 초기 릴리스
 - 📱 푸시 알림 시스템
-- 📈 주식 가격 변동 시스템
 
 ---
 
