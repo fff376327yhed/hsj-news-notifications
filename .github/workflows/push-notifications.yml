@@ -30,7 +30,7 @@ jobs:
           cache: 'npm'  # ⭐ npm 캐시 활성화 (속도 향상)
       
       - name: 📦 의존성 설치
-        run: npm ci --production  # ⭐ ci 사용 (더 빠름)
+        run: npm ci --omit=dev  # ⭐ npm ci 사용, --production 대신 --omit=dev
       
       - name: 🚀 알림 전송 실행
         env:
@@ -41,48 +41,3 @@ jobs:
       - name: 📊 결과 요약
         if: always()
         run: echo "✅ 알림 전송 작업 완료 (5분 간격 - 최소 주기)"
-
-
-# ===== .github/workflows/stock-price-updater.yml =====
-# 5분마다 실행 (GitHub Actions 최소 주기)
-
-name: 📈 Stock Price Updater
-
-on:
-  schedule:
-    # ⭐ 5분마다 실행
-    - cron: '*/5 * * * *'
-  
-  # 수동 실행 버튼
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  update-prices:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    
-    steps:
-      - name: 📥 코드 체크아웃
-        uses: actions/checkout@v4
-      
-      - name: 🟢 Node.js 설치
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'  # ⭐ npm 캐시 활성화
-      
-      - name: 📦 의존성 설치
-        run: npm ci --production
-      
-      - name: 📈 주식 가격 업데이트
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
-        run: node stock-price-updater.js
-        
-      - name: 📊 결과 요약
-        if: always()
-        run: echo "✅ 주식 가격 업데이트 완료 (5분 간격 - 최소 주기)"
