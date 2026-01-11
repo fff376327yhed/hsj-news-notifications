@@ -1,14 +1,8 @@
-# ===== .github/workflows/push-notifications.yml =====
-# 5분마다 실행 (GitHub Actions 최소 주기)
-
 name: 📱 Push Notifications Sender
 
 on:
   schedule:
-    # ⭐ 5분마다 실행 (GitHub Actions 최소 허용 주기)
     - cron: '*/5 * * * *'
-  
-  # 수동 실행 버튼
   workflow_dispatch:
 
 permissions:
@@ -27,10 +21,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'  # ⭐ npm 캐시 활성화 (속도 향상)
       
       - name: 📦 의존성 설치
-        run: npm ci --omit=dev  # ⭐ npm ci 사용, --production 대신 --omit=dev
+        run: npm install --production
       
       - name: 🚀 알림 전송 실행
         env:
@@ -40,4 +33,4 @@ jobs:
         
       - name: 📊 결과 요약
         if: always()
-        run: echo "✅ 알림 전송 작업 완료 (5분 간격 - 최소 주기)"
+        run: echo "✅ 알림 전송 작업 완료"
