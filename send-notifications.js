@@ -44,45 +44,68 @@ async function sendNotifications() {
     const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
     
     // 3. 각 사용자별 처리
-    for (const [uid, userNotifications] of Object.entries(notificationsData)) {
-      const user = usersData[uid];
+for (const [uid, userNotifications] of Object.entries(notificationsData)) {
+  const user = usersData[uid];
+  
+  // 🔍 디버깅: 사용자 정보 상세 출력
+  console.log(`\n🔍 사용자 체크: ${uid}`);
+  console.log(`   📧 이메일: ${user?.email || '없음'}`);
+  console.log(`   📱 FCM 토큰: ${user?.fcmTokens ? Object.keys(user.fcmTokens).length + '개' : '❌ 없음'}`);
+  console.log(`   🔔 알림 활성화: ${user?.notificationsEnabled !== false ? '✅ 예' : '❌ 아니오'}`);
+  console.log(`   📊 알림 개수: ${Object.keys(userNotifications).length}개`);
+  
+  // FCM 토큰 없으면 스킵
+  if (!user || !user.fcmTokens) {
+    console.log(`   ⏭️  스킵 이유: FCM 토큰 없음 (사용자가 알림을 허용하지 않았거나 로그인 기록 없음)`);
+    skippedUsers++;
+    continue;
+  }
+  
+  // 알림이 비활성화되어 있으면 스킵
+  if (user.notificationsEnabled === false) {
+    console.log(`   ⏭️  스킵 이유: 사용자가 알림을 비활성화함`);
+    skippedUsers++;
+    continue;
+  }
+  
+  // ⭐ 중복 방지 강화: 읽지 않았고, 아직 푸시 안 보냈고, 5분 이내 생성된 알림만 필터링
+  const unreadNotifications = Object.entries(userNotifications)
+    .filter(([_, notif]) => {
+      // 읽지 않았고
+      if (notif.read) return false;
       
-      // FCM 토큰 없으면 스킵
-      if (!user || !user.fcmTokens) {
-        skippedUsers++;
-        continue;
+      // 이미 푸시 보냈으면 제외
+      if (notif.pushed) return false;
+      
+      // ⭐ 5분 이내 생성된 알림만 (오래된 알림 중복 방지)
+      if (notif.timestamp < fiveMinutesAgo) {
+        return false;
       }
       
-      // 알림이 비활성화되어 있으면 스킵
-      if (user.notificationsEnabled === false) {
-        skippedUsers++;
-        continue;
-      }
-      
-      // ⭐ 중복 방지 강화: 읽지 않았고, 아직 푸시 안 보냈고, 5분 이내 생성된 알림만 필터링
-      const unreadNotifications = Object.entries(userNotifications)
-        .filter(([_, notif]) => {
-          // 읽지 않았고
-          if (notif.read) return false;
-          
-          // 이미 푸시 보냈으면 제외
-          if (notif.pushed) return false;
-          
-          // ⭐ 5분 이내 생성된 알림만 (오래된 알림 중복 방지)
-          if (notif.timestamp < fiveMinutesAgo) {
-            return false;
-          }
-          
-          return true;
-        })
-        .map(([id, notif]) => ({ id, ...notif }));
-      
-      if (unreadNotifications.length === 0) {
-        continue;
-      }
-      
-      console.log(`\n📬 사용자 ${user.email || uid}: ${unreadNotifications.length}개 알림`);
-      processedUsers++;
+      return true;
+    })
+    .map(([id, notif]) => ({ id, ...notif }));
+  
+  // 🔍 디버깅: 필터링 결과
+  const totalNotifs = Object.keys(userNotifications).length;
+  const readCount = Object.values(userNotifications).filter(n => n.read).length;
+  const pushedCount = Object.values(userNotifications).filter(n => n.pushed).length;
+  const oldCount = Object.values(userNotifications).filter(n => n.timestamp < fiveMinutesAgo).length;
+  
+  console.log(`   📊 알림 분석:`);
+  console.log(`      - 전체: ${totalNotifs}개`);
+  console.log(`      - 이미 읽음: ${readCount}개`);
+  console.log(`      - 이미 푸시됨: ${pushedCount}개`);
+  console.log(`      - 5분 이상 경과: ${oldCount}개`);
+  console.log(`      - 전송 대상: ${unreadNotifications.length}개`);
+  
+  if (unreadNotifications.length === 0) {
+    console.log(`   ⏭️  스킵 이유: 전송할 새 알림 없음`);
+    continue;
+  }
+  
+  console.log(`\n📬 알림 전송 시작: ${user.email || uid}`);
+  processedUsers++;
       
       // FCM 토큰 추출
       const tokens = Object.values(user.fcmTokens)
