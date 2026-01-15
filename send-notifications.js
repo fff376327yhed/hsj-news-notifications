@@ -107,15 +107,24 @@ for (const [uid, userNotifications] of Object.entries(notificationsData)) {
   console.log(`\n📬 알림 전송 시작: ${user.email || uid}`);
   processedUsers++;
       
-      // FCM 토큰 추출
-      const tokens = Object.values(user.fcmTokens)
-        .map(t => t.token)
-        .filter(t => t); // null/undefined 제거
-      
-      if (tokens.length === 0) {
-        console.log('  ⚠️ 유효한 FCM 토큰 없음');
-        continue;
-      }
+// FCM 토큰 추출
+const tokens = Object.values(user.fcmTokens)
+  .map(t => t.token)
+  .filter(t => t); // null/undefined 제거
+
+console.log(`   📱 추출된 토큰: ${tokens.length}개`);
+
+// 🔍 디버깅: 토큰 상세 정보
+if (tokens.length > 0) {
+  tokens.forEach((token, idx) => {
+    console.log(`      토큰 ${idx + 1}: ${token.substring(0, 20)}...`);
+  });
+}
+
+if (tokens.length === 0) {
+  console.log('   ⚠️  유효한 FCM 토큰 없음 (토큰이 null이거나 형식이 잘못됨)');
+  continue;
+}
       
       // 4. 각 알림 전송
       for (const notification of unreadNotifications) {
@@ -194,15 +203,20 @@ for (const [uid, userNotifications] of Object.entries(notificationsData)) {
           }
         };
         
-        try {
-          const response = await admin.messaging().sendEachForMulticast(message);
-          
-          console.log(`  📤 "${notification.title}"`);
-          console.log(`     ✅ 성공: ${response.successCount}`);
-          console.log(`     ❌ 실패: ${response.failureCount}`);
-          
-          totalSent += response.successCount;
-          totalFailed += response.failureCount;
+try {
+  console.log(`   📤 전송 중: "${notification.title}"`);
+  console.log(`      대상 토큰: ${tokens.length}개`);
+  console.log(`      알림 ID: ${notification.id}`);
+  console.log(`      생성 시각: ${new Date(notification.timestamp).toLocaleString('ko-KR')}`);
+  
+  const response = await admin.messaging().sendEachForMulticast(message);
+  
+  console.log(`   📊 전송 결과:`);
+  console.log(`      ✅ 성공: ${response.successCount}개`);
+  console.log(`      ❌ 실패: ${response.failureCount}개`);
+  
+  totalSent += response.successCount;
+  totalFailed += response.failureCount;
           
           // ⭐ 전송 결과 기록
           await db.ref(`notifications/${uid}/${notification.id}`).update({
@@ -211,15 +225,19 @@ for (const [uid, userNotifications] of Object.entries(notificationsData)) {
             lastPushAt: Date.now()
           });
           
-          // 실패한 토큰 처리
-          if (response.failureCount > 0) {
-            const tokensToRemove = [];
-            
-            response.responses.forEach((resp, idx) => {
-              if (!resp.success) {
-                const errorCode = resp.error?.code;
-                
-                console.log(`     ⚠️ 오류 [${idx}]: ${errorCode}`);
+// 실패한 토큰 처리
+if (response.failureCount > 0) {
+  console.log(`\n   ⚠️  실패 상세 분석:`);
+  const tokensToRemove = [];
+  
+  response.responses.forEach((resp, idx) => {
+    if (!resp.success) {
+      const errorCode = resp.error?.code;
+      const errorMessage = resp.error?.message;
+      
+      console.log(`      [${idx + 1}] 오류 코드: ${errorCode}`);
+      console.log(`          오류 메시지: ${errorMessage}`);
+      console.log(`          토큰: ${tokens[idx]?.substring(0, 30)}...`);
                 
                 // 토큰이 유효하지 않은 경우만 삭제
                 if (errorCode === 'messaging/invalid-registration-token' ||
