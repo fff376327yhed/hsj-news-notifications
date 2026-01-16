@@ -1,0 +1,33 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    
+    "notifications": {
+      "$uid": {
+        ".indexOn": ["read", "pushed", "timestamp"],
+        "$notificationId": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+    
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    
+    "articles": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    
+    "comments": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}
