@@ -1,33 +1,171 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null",
-    
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$uid": {
+        ".read": "$uid === auth.uid || root.child('users').child(auth.uid).child('isAdmin').val() === true",
+        ".write": "$uid === auth.uid || root.child('users').child(auth.uid).child('isAdmin').val() === true",
+        ".indexOn": ["read", "timestamp"]
+      }
+    },
+    "friendRequests": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": true
+      }
+    },
+    "friends": {
+      ".read": "auth != null",
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "userIDs": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
     "notifications": {
       "$uid": {
-        ".indexOn": ["read", "pushed", "timestamp"],
-        "$notificationId": {
-          ".read": "auth != null && auth.uid == $uid",
-          ".write": "auth != null && auth.uid == $uid"
+        ".read": "$uid === auth.uid",
+        ".write": true,
+        ".indexOn": ["read", "pushed", "timestamp"]
+      }
+    },
+    "articles": {
+      ".read": true,
+      ".write": "auth != null",
+      "$articleId": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+    "votes": {
+      ".read": true,
+      "$articleId": {
+        ".write": "auth != null",
+        "$uid": {
+          ".write": "$uid === auth.uid"
         }
       }
     },
-    
-    "users": {
-      "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null && auth.uid == $uid"
+    "comments": {
+      ".read": true,
+      ".write": "auth != null",
+      "$articleId": {
+        ".read": true,
+        ".write": "auth != null"
       }
     },
-    
-    "articles": {
+    "pinnedArticles": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "advertisements": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "adminSettings": {
+      ".read": true,
+      ".write": "root.child('users').child(auth.uid).child('isAdmin').val() === true"
+    },
+    "qna": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+    "popups": {
+      ".read": true,
+      ".write": "auth != null",
+      "$popupId": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+    "patchNotes": {
+      ".read": true,
+      ".write": "auth != null",
+      "$patchId": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+    "siteSettings": {
+      ".read": true,
+      ".write": "auth != null",
+      "popup": {
+        ".read": true,
+        ".write": "auth != null"
+      }
+    },
+    "couponUsage": {
+      "$uid": {
+        ".read": "$uid === auth.uid || root.child('users').child(auth.uid).child('isAdmin').val() === true",
+        ".write": "$uid === auth.uid",
+        "$couponCode": {
+          ".validate": "newData.hasChildren(['usedAt']) && newData.child('usedAt').isNumber() && (!newData.hasChild('reward') || newData.child('reward').isNumber()) && (!newData.hasChild('description') || newData.child('description').isString())"
+        }
+      }
+    },
+    "coupons": {
+      ".read": true,
+      "$couponCode": {
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['currentUses']) && newData.child('currentUses').isNumber()"
+      }
+    },
+    "bugReports": {
       ".read": "auth != null",
       ".write": "auth != null"
     },
-    
-    "comments": {
+    "pendingGames": {
       ".read": "auth != null",
       ".write": "auth != null"
+    },
+    "stocks": {
+      "prices": {
+        ".read": true,
+        ".write": "auth != null",
+        "$stockId": {
+          ".read": true,
+          ".write": "auth != null",
+          ".indexOn": ["lastUpdate"]
+        }
+      },
+      "userStocks": {
+        ".read": "auth != null",
+        "$uid": {
+          ".read": "$uid === auth.uid || root.child('users').child(auth.uid).child('isAdmin').val() === true",
+          ".write": "$uid === auth.uid",
+          "$stockId": {
+            ".read": "$uid === auth.uid || root.child('users').child(auth.uid).child('isAdmin').val() === true",
+            ".write": "$uid === auth.uid",
+            ".indexOn": ["lastUpdate"]
+          }
+        }
+      },
+      "transactions": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".indexOn": ["uid", "timestamp", "stockId"]
+      },
+      "gifts": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".indexOn": ["fromUid", "toUid", "timestamp"]
+      },
+      "alerts": {
+        "$uid": {
+          ".read": "$uid === auth.uid",
+          ".write": "$uid === auth.uid",
+          "$stockId": {
+            ".read": "$uid === auth.uid",
+            ".write": "$uid === auth.uid"
+          }
+        }
+      }
     }
   }
 }
