@@ -1,23 +1,34 @@
 name: 📱 Push Notifications Sender
 
 on:
-
-
-
-
-
+  # ⭐ 실시간 트리거 (웹사이트에서 호출)
+  repository_dispatch:
+    types: [send-notification]
+  
+  # ⭐ 백업용 스케줄 (15분마다)
   schedule:
     - cron: '*/5 * * * *'
-
-
+  
+  # 수동 실행
   workflow_dispatch:
 
 permissions:
-@@ -21,16 +28,17 @@
+  contents: read
+
+jobs:
+  send-notifications:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: 📥 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 🟢 Node.js 설치
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
+          cache: 'npm'
 
       - name: 📦 의존성 설치
         run: npm install --production
