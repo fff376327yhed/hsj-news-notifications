@@ -1,8 +1,15 @@
 name: 📱 Push Notifications Sender
 
 on:
+  # ⭐ 실시간 트리거 (웹사이트에서 호출)
+  repository_dispatch:
+    types: [send-notification]
+  
+  # ⭐ 백업용 스케줄 (15분마다)
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/15 * * * *'
+  
+  # 수동 실행
   workflow_dispatch:
 
 permissions:
@@ -21,9 +28,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
       
       - name: 📦 의존성 설치
-        run: npm install --production
+        run: npm ci --production
       
       - name: 🚀 알림 전송 실행
         env:
