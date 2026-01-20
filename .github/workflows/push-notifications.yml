@@ -31,7 +31,7 @@ jobs:
           cache: 'npm'
 
       - name: 📦 의존성 설치
-        run: npm ci --production
+        run: npm install --production
 
       - name: 🚀 알림 전송 실행
         env:
