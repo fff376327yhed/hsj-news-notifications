@@ -2,7 +2,7 @@ const admin = require('firebase-admin');
 
 console.log('🔔 백그라운드 알림 전송 시작...');
 console.log('⏰ 실행 시간:', new Date().toLocaleString('ko-KR'));
-console.log('⚡ 5분 간격 실행 (GitHub Actions 최소 주기)');
+console.log('⚡ 5분 간격 실행');
 
 // Firebase Admin 초기화
 try {
@@ -290,7 +290,7 @@ async function cleanOldNotifications() {
 // 실행
 sendNotifications()
   .then(() => {
-    console.log('\n✅ 작업 완료! (5분 간격 실행 - 최소 주기)');
+    console.log('\n✅ 작업 완료! (5분 간격 자동 실행)');
     console.log('⏰ 다음 실행: 약 5분 후');
     process.exit(0);
   })
