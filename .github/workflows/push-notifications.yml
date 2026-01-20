@@ -5,7 +5,7 @@ on:
   repository_dispatch:
     types: [send-notification]
   
-  # ⭐ 백업용 스케줄 (15분마다)
+  # ⭐ 5분마다 자동 실행
   schedule:
     - cron: '*/5 * * * *'
   
@@ -31,7 +31,7 @@ jobs:
           cache: 'npm'
 
       - name: 📦 의존성 설치
-        run: npm install --production
+        run: npm ci --production
 
       - name: 🚀 알림 전송 실행
         env:
@@ -41,4 +41,4 @@ jobs:
 
       - name: 📊 결과 요약
         if: always()
-        run: echo "✅ 알림 전송 작업 완료"
+        run: echo "✅ 알림 전송 작업 완료 (5분 간격)"
