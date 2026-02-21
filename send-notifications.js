@@ -52,6 +52,11 @@ async function sendNotifications() {
         skippedUsers++;
         continue;
       }
+
+      // ✅ [수정] 사용자의 알림 타입 설정 읽기 (없으면 기본값 true)
+      const notifTypes = user.notificationTypes || {};
+      const articleEnabled = notifTypes.article !== false;  // 기본 true
+      const commentEnabled = notifTypes.comment !== false;  // 기본 true
       
       // ⭐ 최적화: pushed=false인 알림만 쿼리로 가져오기
       const unreadQuery = await db.ref(`notifications/${uid}`)
@@ -61,10 +66,23 @@ async function sendNotifications() {
       
       const queriedNotifications = unreadQuery.val() || {};
       
-      // 🔍 추가 필터링 (read=false, 5분 이내)
+      // ✅ [수정] 알림 타입 설정도 함께 필터링
       const unreadNotifications = Object.entries(queriedNotifications)
         .filter(([_, notif]) => {
-          return !notif.read && notif.timestamp >= fiveMinutesAgo;
+          // 기본 조건: 읽지 않음, 미전송, 5분 이내
+          if (notif.read || notif.pushed || notif.timestamp < fiveMinutesAgo) {
+            return false;
+          }
+          // 알림 타입별 사용자 설정 확인
+          if (notif.type === 'article' && !articleEnabled) {
+            console.log(`   ⏭️ 기사 알림 비활성화 사용자 스킵: ${uid}`);
+            return false;
+          }
+          if ((notif.type === 'myArticleComment' || notif.type === 'comment') && !commentEnabled) {
+            console.log(`   ⏭️ 댓글 알림 비활성화 사용자 스킵: ${uid}`);
+            return false;
+          }
+          return true;
         })
         .map(([id, notif]) => ({ id, ...notif }));
       
@@ -142,6 +160,9 @@ async function sendNotifications() {
             }
           },
           webpush: {
+            headers: {
+              Urgency: 'high'
+            },
             notification: {
               title: notification.title || '📰 해정뉴스',
               body: notification.text || '새로운 알림이 있습니다',
@@ -186,9 +207,11 @@ async function sendNotifications() {
             response.responses.forEach((resp, idx) => {
               if (!resp.success) {
                 const errorCode = resp.error?.code;
+                console.log(`      ⚠️ 토큰 ${idx} 오류:`, errorCode);
                 
                 if (errorCode === 'messaging/invalid-registration-token' ||
-                    errorCode === 'messaging/registration-token-not-registered') {
+                    errorCode === 'messaging/registration-token-not-registered' ||
+                    errorCode === 'messaging/invalid-argument') {
                   tokensToRemove.push(tokens[idx]);
                 }
               }
@@ -199,12 +222,15 @@ async function sendNotifications() {
               console.log(`     🗑️ ${tokensToRemove.length}개 무효 토큰 제거 중...`);
               
               for (const token of tokensToRemove) {
-                const tokenKey = Buffer.from(token)
-                  .toString('base64')
-                  .substring(0, 20)
-                  .replace(/[^a-zA-Z0-9]/g, '');
-                
-                await db.ref(`users/${uid}/fcmTokens/${tokenKey}`).remove();
+                // 토큰 키 찾아서 삭제
+                if (user.fcmTokens) {
+                  for (const [tokenKey, tokenData] of Object.entries(user.fcmTokens)) {
+                    if (tokenData.token === token) {
+                      await db.ref(`users/${uid}/fcmTokens/${tokenKey}`).remove();
+                      console.log(`     🗑️ 토큰 제거 완료: ${tokenKey}`);
+                    }
+                  }
+                }
               }
             }
           }
@@ -248,21 +274,19 @@ async function sendNotifications() {
   }
 }
 
-// 오래된 알림 정리 함수 (최적화)
+// 오래된 알림 정리 함수
 async function cleanOldNotifications() {
   console.log('\n🧹 오래된 알림 정리 중...');
   
   try {
     const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
     
-    // ⭐ 최적화: 사용자별로 개별 쿼리
     const usersSnapshot = await db.ref('users').once('value');
     const usersData = usersSnapshot.val() || {};
     
     let deletedCount = 0;
     
     for (const uid of Object.keys(usersData)) {
-      // ⭐ timestamp 기준으로 오래된 알림 쿼리
       const oldNotifications = await db.ref(`notifications/${uid}`)
         .orderByChild('timestamp')
         .endAt(sevenDaysAgo)
