@@ -37,6 +37,10 @@ async function sendNotifications() {
     let processedUsers = 0;
     let skippedUsers = 0;
 
+    // 결과 추적
+    const successList = []; // { email, notifTitle, successCount }
+    const failureList = []; // { email, notifTitle, errors: [{errorCode, errorMsg}] }
+
     for (const uid of Object.keys(usersData)) {
       const user = usersData[uid];
       
@@ -95,6 +99,11 @@ async function sendNotifications() {
 
       if (tokens.length === 0) {
         console.log('   ⚠️  유효한 FCM 토큰 없음');
+        failureList.push({
+          email: user.email || uid,
+          notifCount: unreadNotifications.length,
+          errors: [{ errorCode: 'NO_FCM_TOKEN', errorMsg: '등록된 FCM 토큰 없음' }]
+        });
         continue;
       }
 
@@ -193,6 +202,35 @@ async function sendNotifications() {
           totalSent += response.successCount;
           totalFailed += response.failureCount;
 
+          // 성공 기록
+          if (response.successCount > 0) {
+            successList.push({
+              email: user.email || uid,
+              notifTitle: notification.title,
+              successCount: response.successCount
+            });
+          }
+
+          // 실패 상세 기록
+          if (response.failureCount > 0) {
+            const notifErrors = [];
+            response.responses.forEach((resp, idx) => {
+              if (!resp.success) {
+                notifErrors.push({
+                  errorCode: resp.error?.code || 'UNKNOWN',
+                  errorMsg: resp.error?.message || '알 수 없는 오류'
+                });
+              }
+            });
+            if (notifErrors.length > 0) {
+              failureList.push({
+                email: user.email || uid,
+                notifTitle: notification.title,
+                errors: notifErrors
+              });
+            }
+          }
+
           await db.ref(`notifications/${uid}/${notification.id}`).update({
             pushSuccessCount: response.successCount,
             pushFailureCount: response.failureCount,
@@ -239,6 +277,12 @@ async function sendNotifications() {
         } catch (error) {
           console.error(`  ❌ 전송 오류:`, error.message);
           totalFailed++;
+
+          failureList.push({
+            email: user.email || uid,
+            notifTitle: notification.title,
+            errors: [{ errorCode: error.code || 'SEND_ERROR', errorMsg: error.message }]
+          });
           
           // 오류 시 pushed 플래그 롤백
           await db.ref(`notifications/${uid}/${notification.id}`).update({
@@ -252,7 +296,7 @@ async function sendNotifications() {
       }
     }
 
-    // 최종 결과
+    // 최종 결과 요약
     console.log('\n' + '='.repeat(60));
     console.log('📊 전송 완료 결과:');
     console.log(`   👥 처리된 사용자: ${processedUsers}명`);
@@ -260,6 +304,32 @@ async function sendNotifications() {
     console.log(`   ✅ 성공: ${totalSent}건`);
     console.log(`   ❌ 실패: ${totalFailed}건`);
     console.log('='.repeat(60));
+
+    // ✅ 성공 이메일 목록
+    if (successList.length > 0) {
+      console.log('\n✅ 전송 성공 목록:');
+      console.log('-'.repeat(60));
+      successList.forEach((s, i) => {
+        console.log(`  ${i + 1}. ${s.email}`);
+        console.log(`     알림: "${s.notifTitle}"  |  성공 디바이스: ${s.successCount}개`);
+      });
+    }
+
+    // ❌ 실패 이메일 + 오류 목록
+    if (failureList.length > 0) {
+      console.log('\n❌ 전송 실패 목록:');
+      console.log('-'.repeat(60));
+      failureList.forEach((f, i) => {
+        console.log(`  ${i + 1}. ${f.email}`);
+        if (f.notifTitle) console.log(`     알림: "${f.notifTitle}"`);
+        f.errors.forEach(e => {
+          console.log(`     ⚠️  오류코드: ${e.errorCode}`);
+          console.log(`         오류내용: ${e.errorMsg}`);
+        });
+      });
+    }
+
+    console.log('\n' + '='.repeat(60));
 
     if (totalSent === 0 && processedUsers === 0) {
       console.log('ℹ️  전송할 알림이 없습니다.');
