@@ -25,10 +25,10 @@ async function sendNotifications() {
   try {
     console.log('📊 데이터베이스 읽기 중...');
     
-    // ⭐ 5분 이내 알림만 처리
-    const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-    
-    // 1. 사용자 정보 먼저 가져오기 (한 번만)
+    // ⭐ [수정] 10분으로 확장 - 5분 간격 실행이지만 딜레이 대비 여유분 추가
+    const TEN_MINUTES_AGO = Date.now() - (10 * 60 * 1000);
+    console.log(`⏱️ 기준 시간: ${new Date(TEN_MINUTES_AGO).toLocaleString('ko-KR')} 이후 알림 처리`);
+
     const usersSnapshot = await db.ref('users').once('value');
     const usersData = usersSnapshot.val() || {};
     
@@ -36,94 +36,98 @@ async function sendNotifications() {
     let totalFailed = 0;
     let processedUsers = 0;
     let skippedUsers = 0;
-    
-    // 2. 각 사용자별 최적화된 쿼리 사용
+
     for (const uid of Object.keys(usersData)) {
       const user = usersData[uid];
       
-      // FCM 토큰 없으면 스킵
       if (!user || !user.fcmTokens) {
         skippedUsers++;
         continue;
       }
       
-      // 알림이 비활성화되어 있으면 스킵
       if (user.notificationsEnabled === false) {
         skippedUsers++;
         continue;
       }
 
-      // ✅ [수정] 사용자의 알림 타입 설정 읽기 (없으면 기본값 true)
       const notifTypes = user.notificationTypes || {};
-      const articleEnabled = notifTypes.article !== false;  // 기본 true
-      const commentEnabled = notifTypes.comment !== false;  // 기본 true
-      
-      // ⭐ 최적화: pushed=false인 알림만 쿼리로 가져오기
+      const articleEnabled = notifTypes.article !== false;
+      const commentEnabled = notifTypes.comment !== false;
+
+      // pushed=false인 알림 가져오기
       const unreadQuery = await db.ref(`notifications/${uid}`)
         .orderByChild('pushed')
         .equalTo(false)
         .once('value');
       
       const queriedNotifications = unreadQuery.val() || {};
-      
-      // ✅ [수정] 알림 타입 설정도 함께 필터링
+
+      // ⭐ [수정] 10분 윈도우 + admin 타입 추가
       const unreadNotifications = Object.entries(queriedNotifications)
         .filter(([_, notif]) => {
-          // 기본 조건: 읽지 않음, 미전송, 5분 이내
-          if (notif.read || notif.pushed || notif.timestamp < fiveMinutesAgo) {
+          if (notif.read || notif.pushed) return false;
+
+          // ⭐ 타임스탬프 없는 알림도 처리 (admin이 직접 삽입한 경우)
+          if (notif.timestamp && notif.timestamp < TEN_MINUTES_AGO) {
+            console.log(`   ⏭️ 오래된 알림 스킵 (${new Date(notif.timestamp).toLocaleString('ko-KR')}): ${notif.title}`);
             return false;
           }
-          // 알림 타입별 사용자 설정 확인
-          if (notif.type === 'article' && !articleEnabled) {
-            console.log(`   ⏭️ 기사 알림 비활성화 사용자 스킵: ${uid}`);
-            return false;
-          }
-          if ((notif.type === 'myArticleComment' || notif.type === 'comment') && !commentEnabled) {
-            console.log(`   ⏭️ 댓글 알림 비활성화 사용자 스킵: ${uid}`);
-            return false;
-          }
+
+          // 알림 타입별 필터
+          if (notif.type === 'article' && !articleEnabled) return false;
+          if ((notif.type === 'myArticleComment' || notif.type === 'comment') && !commentEnabled) return false;
+          // ⭐ admin 타입은 항상 전송 (사용자 설정 무시)
+          // 그 외 타입도 허용
+
           return true;
         })
         .map(([id, notif]) => ({ id, ...notif }));
-      
-      if (unreadNotifications.length === 0) {
-        continue;
-      }
-      
+
+      if (unreadNotifications.length === 0) continue;
+
       console.log(`\n📬 알림 전송 시작: ${user.email || uid}`);
       console.log(`   📊 전송 대상: ${unreadNotifications.length}개`);
       processedUsers++;
-      
-      // FCM 토큰 추출
+
       const tokens = Object.values(user.fcmTokens)
         .map(t => t.token)
-        .filter(t => t);
-      
+        .filter(t => t && t.length > 10); // ⭐ 빈 토큰 필터
+
       if (tokens.length === 0) {
         console.log('   ⚠️  유효한 FCM 토큰 없음');
         continue;
       }
-      
-      // 3. 각 알림 전송
+
+      console.log(`   🔑 FCM 토큰 수: ${tokens.length}개`);
+
       for (const notification of unreadNotifications) {
-        // ⭐ 전송 전 다시 한 번 pushed 상태 확인 (동시 실행 방지)
+        // 동시 실행 방지: 전송 전 재확인
         const recheck = await db.ref(`notifications/${uid}/${notification.id}/pushed`).once('value');
         if (recheck.val() === true) {
           console.log(`  ⏭️ 이미 전송된 알림: ${notification.title}`);
           continue;
         }
-        
-        // ⭐ 즉시 pushed 플래그 설정
+
+        // 즉시 pushed 플래그 설정
         await db.ref(`notifications/${uid}/${notification.id}`).update({
           pushed: true,
           pushedAt: Date.now(),
           pushAttemptedAt: Date.now()
         });
-        
-        // 알림 메시지 구성
+
+        // ⭐ [수정] admin 타입 링크 처리 추가
+        const notifLink = notification.articleId
+          ? `https://fff376327yhed.github.io/hsj_news.io/?page=article&id=${notification.articleId}`
+          : 'https://fff376327yhed.github.io/hsj_news.io/';
+
+        // ⭐ [수정] admin 타입 배지 색상 구분
+        const badgeIcon = notification.type === 'admin'
+          ? '📢 해정뉴스'
+          : '📰 해정뉴스';
+
         const message = {
           data: {
-            title: notification.title || '📰 해정뉴스',
+            title: notification.title || badgeIcon,
             body: notification.text || '새로운 알림이 있습니다',
             text: notification.text || '새로운 알림이 있습니다',
             articleId: notification.articleId || '',
@@ -135,7 +139,7 @@ async function sendNotifications() {
           android: {
             priority: 'high',
             notification: {
-              title: notification.title || '📰 해정뉴스',
+              title: notification.title || badgeIcon,
               body: notification.text || '새로운 알림이 있습니다',
               icon: 'ic_notification',
               color: '#c62828',
@@ -149,7 +153,7 @@ async function sendNotifications() {
             payload: {
               aps: {
                 alert: {
-                  title: notification.title || '📰 해정뉴스',
+                  title: notification.title || badgeIcon,
                   body: notification.text || '새로운 알림이 있습니다'
                 },
                 sound: 'default',
@@ -164,42 +168,37 @@ async function sendNotifications() {
               Urgency: 'high'
             },
             notification: {
-              title: notification.title || '📰 해정뉴스',
+              title: notification.title || badgeIcon,
               body: notification.text || '새로운 알림이 있습니다',
               icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
               badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
               vibrate: [200, 100, 200],
-              requireInteraction: false,
+              requireInteraction: notification.type === 'admin', // ⭐ 관리자 알림은 직접 닫아야 함
               tag: notification.id,
-              renotify: false
+              renotify: true // ⭐ 같은 tag여도 다시 표시
             },
             fcmOptions: {
-              link: notification.articleId ? 
-                `https://fff376327yhed.github.io/hsj_news.io/?page=article&id=${notification.articleId}` : 
-                'https://fff376327yhed.github.io/hsj_news.io/'
+              link: notifLink
             }
           }
         };
-        
+
         try {
-          console.log(`   📤 전송 중: "${notification.title}"`);
+          console.log(`   📤 전송 중: [${notification.type}] "${notification.title}"`);
           
           const response = await admin.messaging().sendEachForMulticast(message);
           
-          console.log(`   📊 전송 결과:`);
-          console.log(`      ✅ 성공: ${response.successCount}개`);
-          console.log(`      ❌ 실패: ${response.failureCount}개`);
+          console.log(`   📊 전송 결과: ✅ 성공 ${response.successCount} / ❌ 실패 ${response.failureCount}`);
           
           totalSent += response.successCount;
           totalFailed += response.failureCount;
-          
-          // 전송 결과 기록
+
           await db.ref(`notifications/${uid}/${notification.id}`).update({
             pushSuccessCount: response.successCount,
             pushFailureCount: response.failureCount,
             lastPushAt: Date.now()
           });
-          
+
           // 실패한 토큰 처리
           if (response.failureCount > 0) {
             const tokensToRemove = [];
@@ -207,22 +206,24 @@ async function sendNotifications() {
             response.responses.forEach((resp, idx) => {
               if (!resp.success) {
                 const errorCode = resp.error?.code;
-                console.log(`      ⚠️ 토큰 ${idx} 오류:`, errorCode);
+                console.log(`      ⚠️ 토큰 ${idx} 오류: ${errorCode}`);
                 
-                if (errorCode === 'messaging/invalid-registration-token' ||
-                    errorCode === 'messaging/registration-token-not-registered' ||
-                    errorCode === 'messaging/invalid-argument') {
+                const invalidCodes = [
+                  'messaging/invalid-registration-token',
+                  'messaging/registration-token-not-registered',
+                  'messaging/invalid-argument',
+                  'messaging/invalid-recipient'
+                ];
+                
+                if (invalidCodes.includes(errorCode)) {
                   tokensToRemove.push(tokens[idx]);
                 }
               }
             });
-            
-            // DB에서 무효 토큰 제거
+
             if (tokensToRemove.length > 0) {
               console.log(`     🗑️ ${tokensToRemove.length}개 무효 토큰 제거 중...`);
-              
               for (const token of tokensToRemove) {
-                // 토큰 키 찾아서 삭제
                 if (user.fcmTokens) {
                   for (const [tokenKey, tokenData] of Object.entries(user.fcmTokens)) {
                     if (tokenData.token === token) {
@@ -234,25 +235,24 @@ async function sendNotifications() {
               }
             }
           }
-          
+
         } catch (error) {
           console.error(`  ❌ 전송 오류:`, error.message);
           totalFailed++;
           
-          // 오류 발생 시 pushed 플래그 롤백
+          // 오류 시 pushed 플래그 롤백
           await db.ref(`notifications/${uid}/${notification.id}`).update({
             pushed: false,
             pushError: error.message,
             pushErrorAt: Date.now()
           });
         }
-        
-        // API 제한 방지를 위한 딜레이
+
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
-    
-    // 4. 최종 결과
+
+    // 최종 결과
     console.log('\n' + '='.repeat(60));
     console.log('📊 전송 완료 결과:');
     console.log(`   👥 처리된 사용자: ${processedUsers}명`);
@@ -260,26 +260,25 @@ async function sendNotifications() {
     console.log(`   ✅ 성공: ${totalSent}건`);
     console.log(`   ❌ 실패: ${totalFailed}건`);
     console.log('='.repeat(60));
-    
+
     if (totalSent === 0 && processedUsers === 0) {
       console.log('ℹ️  전송할 알림이 없습니다.');
     }
-    
-    // 5. 오래된 알림 정리
+
     await cleanOldNotifications();
-    
+
   } catch (error) {
     console.error('❌ 알림 전송 중 오류 발생:', error);
     throw error;
   }
 }
 
-// 오래된 알림 정리 함수
+// ⭐ [수정] 오래된 알림 정리 - 30일로 확장 (7일은 너무 짧음)
 async function cleanOldNotifications() {
   console.log('\n🧹 오래된 알림 정리 중...');
   
   try {
-    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const THIRTY_DAYS_AGO = Date.now() - (30 * 24 * 60 * 60 * 1000);
     
     const usersSnapshot = await db.ref('users').once('value');
     const usersData = usersSnapshot.val() || {};
@@ -289,7 +288,7 @@ async function cleanOldNotifications() {
     for (const uid of Object.keys(usersData)) {
       const oldNotifications = await db.ref(`notifications/${uid}`)
         .orderByChild('timestamp')
-        .endAt(sevenDaysAgo)
+        .endAt(THIRTY_DAYS_AGO)
         .once('value');
       
       const oldData = oldNotifications.val() || {};
@@ -301,7 +300,7 @@ async function cleanOldNotifications() {
     }
     
     if (deletedCount > 0) {
-      console.log(`✅ ${deletedCount}개의 오래된 알림 삭제 완료`);
+      console.log(`✅ ${deletedCount}개의 오래된 알림 삭제 완료 (30일 이상)`);
     } else {
       console.log('ℹ️  삭제할 오래된 알림 없음');
     }
