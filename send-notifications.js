@@ -25,9 +25,9 @@ async function sendNotifications() {
   try {
     console.log('📊 데이터베이스 읽기 중...');
     
-    // ⭐ [수정] 10분으로 확장 - 5분 간격 실행이지만 딜레이 대비 여유분 추가
-    const TEN_MINUTES_AGO = Date.now() - (10 * 60 * 1000);
-    console.log(`⏱️ 기준 시간: ${new Date(TEN_MINUTES_AGO).toLocaleString('ko-KR')} 이후 알림 처리`);
+    // ✅ 교체
+// pushed=false 플래그만으로 판단 (시간 필터 제거 - GitHub Actions 딜레이 대응)
+console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
 
     const usersSnapshot = await db.ref('users').once('value');
     const usersData = usersSnapshot.val() || {};
@@ -71,11 +71,9 @@ async function sendNotifications() {
         .filter(([_, notif]) => {
           if (notif.read || notif.pushed) return false;
 
-          // ⭐ 타임스탬프 없는 알림도 처리 (admin이 직접 삽입한 경우)
-          if (notif.timestamp && notif.timestamp < TEN_MINUTES_AGO) {
-            console.log(`   ⏭️ 오래된 알림 스킵 (${new Date(notif.timestamp).toLocaleString('ko-KR')}): ${notif.title}`);
-            return false;
-          }
+         // ✅ 교체 (해당 if 블록 전체 삭제)
+// (삭제만 하면 됨 — pushed:false 플래그가 중복 방지 역할을 함)
+
 
           // 알림 타입별 필터
           if (notif.type === 'article' && !articleEnabled) return false;
