@@ -148,14 +148,17 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
             notification: {
               title: notification.title || badgeIcon,
               body: notification.text || '새로운 알림이 있습니다',
-              icon: 'ic_notification',
-              color: '#c62828',
-              sound: 'default',
-              channelId: 'default',
+              icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
+              badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
+              vibrate: [200, 100, 200],
+              requireInteraction: notification.type === 'admin',
               tag: notification.id,
-              clickAction: 'FLUTTER_NOTIFICATION_CLICK'
-            }
-          },
+              renotify: true,
+              data: {                                          // ← 추가
+                url: notifLink,                               // ← 추가
+                articleId: notification.articleId || ''       // ← 추가
+              }                                               // ← 추가
+            },
           apns: {
             payload: {
               aps: {
