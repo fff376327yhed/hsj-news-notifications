@@ -143,23 +143,25 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
             timestamp: Date.now().toString()
           },
           tokens: tokens,
-          android: {
-            priority: 'high',
-            notification: {
-              title: notification.title || badgeIcon,
-              body: notification.text || '새로운 알림이 있습니다',
-              icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
-              badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
-              vibrate: [200, 100, 200],
-              requireInteraction: notification.type === 'admin',
-              tag: notification.id,
-              renotify: true,
-              data: {                                          // ← 추가
-                url: notifLink,                               // ← 추가
-                articleId: notification.articleId || ''       // ← 추가
-              }                                               // ← 추가
-            },
-          apns: {
+         // ✅ 수정된 코드
+android: {
+  priority: 'high',
+  notification: {
+    title: notification.title || badgeIcon,
+    body: notification.text || '새로운 알림이 있습니다',
+    icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
+    badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
+    vibrate: [200, 100, 200],
+    requireInteraction: notification.type === 'admin',
+    tag: notification.id,
+    renotify: true,
+    data: {
+      url: notifLink,
+      articleId: notification.articleId || ''
+    }
+  }
+},                            // ← notification 닫힘
+apns: {                       // ← android도 정상 닫힘 ✅
             payload: {
               aps: {
                 alert: {
