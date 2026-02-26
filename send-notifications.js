@@ -143,25 +143,18 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
             timestamp: Date.now().toString()
           },
           tokens: tokens,
-         // ✅ 수정된 코드
-android: {
-  priority: 'high',
-  notification: {
-    title: notification.title || badgeIcon,
-    body: notification.text || '새로운 알림이 있습니다',
-    icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
-    badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
-    vibrate: [200, 100, 200],
-    requireInteraction: notification.type === 'admin',
-    tag: notification.id,
-    renotify: true,
-    data: {
-      url: notifLink,
-      articleId: notification.articleId || ''
-    }
-  }
-},                            // ← notification 닫힘
-apns: {                       // ← android도 정상 닫힘 ✅
+          // ✅ 수정된 코드 - android.notification에서 웹 전용 필드 제거
+          android: {
+            priority: 'high',
+            notification: {
+              title: notification.title || badgeIcon,
+              body: notification.text || '새로운 알림이 있습니다',
+              icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
+              tag: notification.id,
+              notificationCount: 1
+            }
+          },
+          apns: {
             payload: {
               aps: {
                 alert: {
