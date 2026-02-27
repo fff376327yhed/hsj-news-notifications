@@ -25,9 +25,8 @@ async function sendNotifications() {
   try {
     console.log('📊 데이터베이스 읽기 중...');
     
-    // ✅ 교체
-// pushed=false 플래그만으로 판단 (시간 필터 제거 - GitHub Actions 딜레이 대응)
-console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
+    // pushed=false 플래그만으로 판단 (시간 필터 없음)
+    console.log('⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)');
 
     const usersSnapshot = await db.ref('users').once('value');
     const usersData = usersSnapshot.val() || {};
@@ -35,22 +34,26 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
     let totalSent = 0;
     let totalFailed = 0;
     let processedUsers = 0;
-    let skippedUsers = 0;
+    let skippedNoToken = 0;
+    let skippedNotifsDisabled = 0;
 
-    // 결과 추적
-    const successList = []; // { email, notifTitle, successCount }
-    const failureList = []; // { email, notifTitle, errors: [{errorCode, errorMsg}] }
+    const successList = [];
+    const failureList = [];
 
     for (const uid of Object.keys(usersData)) {
       const user = usersData[uid];
       
-      if (!user || !user.fcmTokens) {
-        skippedUsers++;
+      if (!user) continue;
+
+      // ✅ fcmTokens가 없거나 빈 객체이면 스킵 (이유 기록)
+      if (!user.fcmTokens || Object.keys(user.fcmTokens).length === 0) {
+        skippedNoToken++;
         continue;
       }
       
+      // ✅ 알림 비활성화된 경우 스킵
       if (user.notificationsEnabled === false) {
-        skippedUsers++;
+        skippedNotifsDisabled++;
         continue;
       }
 
@@ -66,20 +69,17 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
       
       const queriedNotifications = unreadQuery.val() || {};
 
-      // ⭐ [수정] 10분 윈도우 + admin 타입 추가
+      // ✅ 필터: read=false, pushed=false, 타입별 설정 확인
       const unreadNotifications = Object.entries(queriedNotifications)
         .filter(([_, notif]) => {
-          if (notif.read || notif.pushed) return false;
+          if (notif.read === true || notif.pushed === true) return false;
 
-         // ✅ 교체 (해당 if 블록 전체 삭제)
-// (삭제만 하면 됨 — pushed:false 플래그가 중복 방지 역할을 함)
-
+          // admin 타입은 항상 전송
+          if (notif.type === 'admin') return true;
 
           // 알림 타입별 필터
           if (notif.type === 'article' && !articleEnabled) return false;
           if ((notif.type === 'myArticleComment' || notif.type === 'comment') && !commentEnabled) return false;
-          // ⭐ admin 타입은 항상 전송 (사용자 설정 무시)
-          // 그 외 타입도 허용
 
           return true;
         })
@@ -91,64 +91,62 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
       console.log(`   📊 전송 대상: ${unreadNotifications.length}개`);
       processedUsers++;
 
+      // ✅ 유효한 토큰만 필터링 (빈 토큰, 너무 짧은 토큰 제외)
       const tokens = Object.values(user.fcmTokens)
-        .map(t => t.token)
-        .filter(t => t && t.length > 10); // ⭐ 빈 토큰 필터
+        .filter(t => t && t.token && t.token.length > 20)
+        .map(t => t.token);
 
       if (tokens.length === 0) {
-        console.log('   ⚠️  유효한 FCM 토큰 없음');
+        console.log(`   ⚠️  유효한 FCM 토큰 없음 (등록된 항목: ${Object.keys(user.fcmTokens).length}개)`);
         failureList.push({
           email: user.email || uid,
           notifCount: unreadNotifications.length,
-          errors: [{ errorCode: 'NO_FCM_TOKEN', errorMsg: '등록된 FCM 토큰 없음' }]
+          errors: [{ errorCode: 'NO_VALID_FCM_TOKEN', errorMsg: `fcmTokens 존재하나 유효 토큰 없음 (${Object.keys(user.fcmTokens).length}개 항목)` }]
         });
+        // ✅ 전송 불가 알림들을 pushed=true로 마킹하지 않음 → 다음에 재시도 가능
         continue;
       }
 
-      console.log(`   🔑 FCM 토큰 수: ${tokens.length}개`);
+      console.log(`   🔑 유효한 FCM 토큰: ${tokens.length}개`);
 
       for (const notification of unreadNotifications) {
         // 동시 실행 방지: 전송 전 재확인
         const recheck = await db.ref(`notifications/${uid}/${notification.id}/pushed`).once('value');
         if (recheck.val() === true) {
-          console.log(`  ⏭️ 이미 전송된 알림: ${notification.title}`);
+          console.log(`   ⏭️ 이미 전송된 알림 스킵: "${notification.title}"`);
           continue;
         }
 
-        // 즉시 pushed 플래그 설정
+        // 즉시 pushed 플래그 설정 (중복 방지)
         await db.ref(`notifications/${uid}/${notification.id}`).update({
           pushed: true,
           pushedAt: Date.now(),
           pushAttemptedAt: Date.now()
         });
 
-        // ⭐ [수정] admin 타입 링크 처리 추가
         const notifLink = notification.articleId
           ? `https://fff376327yhed.github.io/hsj_news.io/?page=article&id=${notification.articleId}`
           : 'https://fff376327yhed.github.io/hsj_news.io/';
 
-        // ⭐ [수정] admin 타입 배지 색상 구분
-        const badgeIcon = notification.type === 'admin'
-          ? '📢 해정뉴스'
-          : '📰 해정뉴스';
+        const notifTitle = notification.title || '📰 해정뉴스';
+        const notifBody = notification.text || '새로운 알림이 있습니다';
 
         const message = {
           data: {
-            title: notification.title || badgeIcon,
-            body: notification.text || '새로운 알림이 있습니다',
-            text: notification.text || '새로운 알림이 있습니다',
+            title: notifTitle,
+            body: notifBody,
+            text: notifBody,
             articleId: notification.articleId || '',
             type: notification.type || 'notification',
             notificationId: notification.id,
             timestamp: Date.now().toString()
           },
           tokens: tokens,
-          // ✅ 수정된 코드 - android.notification에서 웹 전용 필드 제거
           android: {
             priority: 'high',
             notification: {
-              title: notification.title || badgeIcon,
-              body: notification.text || '새로운 알림이 있습니다',
+              title: notifTitle,
+              body: notifBody,
               icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
               tag: notification.id,
               notificationCount: 1
@@ -158,8 +156,8 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
             payload: {
               aps: {
                 alert: {
-                  title: notification.title || badgeIcon,
-                  body: notification.text || '새로운 알림이 있습니다'
+                  title: notifTitle,
+                  body: notifBody
                 },
                 sound: 'default',
                 badge: 1,
@@ -173,14 +171,14 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
               Urgency: 'high'
             },
             notification: {
-              title: notification.title || badgeIcon,
-              body: notification.text || '새로운 알림이 있습니다',
+              title: notifTitle,
+              body: notifBody,
               icon: 'https://fff376327yhed.github.io/hsj_news.io/favicon/android-icon-192x192.png',
               badge: 'https://fff376327yhed.github.io/hsj_news.io/favicon/favicon-16x16.png',
               vibrate: [200, 100, 200],
-              requireInteraction: notification.type === 'admin', // ⭐ 관리자 알림은 직접 닫아야 함
+              requireInteraction: notification.type === 'admin',
               tag: notification.id,
-              renotify: true // ⭐ 같은 tag여도 다시 표시
+              renotify: true
             },
             fcmOptions: {
               link: notifLink
@@ -189,42 +187,21 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
         };
 
         try {
-          console.log(`   📤 전송 중: [${notification.type}] "${notification.title}"`);
+          console.log(`   📤 전송: [${notification.type}] "${notifTitle}"`);
           
           const response = await admin.messaging().sendEachForMulticast(message);
           
-          console.log(`   📊 전송 결과: ✅ 성공 ${response.successCount} / ❌ 실패 ${response.failureCount}`);
+          console.log(`   📊 결과: ✅ ${response.successCount} 성공 / ❌ ${response.failureCount} 실패`);
           
           totalSent += response.successCount;
           totalFailed += response.failureCount;
 
-          // 성공 기록
           if (response.successCount > 0) {
             successList.push({
               email: user.email || uid,
-              notifTitle: notification.title,
+              notifTitle,
               successCount: response.successCount
             });
-          }
-
-          // 실패 상세 기록
-          if (response.failureCount > 0) {
-            const notifErrors = [];
-            response.responses.forEach((resp, idx) => {
-              if (!resp.success) {
-                notifErrors.push({
-                  errorCode: resp.error?.code || 'UNKNOWN',
-                  errorMsg: resp.error?.message || '알 수 없는 오류'
-                });
-              }
-            });
-            if (notifErrors.length > 0) {
-              failureList.push({
-                email: user.email || uid,
-                notifTitle: notification.title,
-                errors: notifErrors
-              });
-            }
           }
 
           await db.ref(`notifications/${uid}/${notification.id}`).update({
@@ -233,13 +210,15 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
             lastPushAt: Date.now()
           });
 
-          // 실패한 토큰 처리
+          // 실패 상세 분석 및 무효 토큰 제거
           if (response.failureCount > 0) {
+            const notifErrors = [];
             const tokensToRemove = [];
             
             response.responses.forEach((resp, idx) => {
               if (!resp.success) {
-                const errorCode = resp.error?.code;
+                const errorCode = resp.error?.code || 'UNKNOWN';
+                notifErrors.push({ errorCode, errorMsg: resp.error?.message || '' });
                 console.log(`      ⚠️ 토큰 ${idx} 오류: ${errorCode}`);
                 
                 const invalidCodes = [
@@ -249,21 +228,24 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
                   'messaging/invalid-recipient'
                 ];
                 
-                if (invalidCodes.includes(errorCode)) {
+                if (invalidCodes.includes(errorCode) && tokens[idx]) {
                   tokensToRemove.push(tokens[idx]);
                 }
               }
             });
 
+            if (notifErrors.length > 0) {
+              failureList.push({ email: user.email || uid, notifTitle, errors: notifErrors });
+            }
+
+            // 무효 토큰 DB에서 제거
             if (tokensToRemove.length > 0) {
               console.log(`     🗑️ ${tokensToRemove.length}개 무효 토큰 제거 중...`);
               for (const token of tokensToRemove) {
-                if (user.fcmTokens) {
-                  for (const [tokenKey, tokenData] of Object.entries(user.fcmTokens)) {
-                    if (tokenData.token === token) {
-                      await db.ref(`users/${uid}/fcmTokens/${tokenKey}`).remove();
-                      console.log(`     🗑️ 토큰 제거 완료: ${tokenKey}`);
-                    }
+                for (const [tokenKey, tokenData] of Object.entries(user.fcmTokens)) {
+                  if (tokenData.token === token) {
+                    await db.ref(`users/${uid}/fcmTokens/${tokenKey}`).remove();
+                    console.log(`     🗑️ 토큰 제거: ${tokenKey}`);
                   }
                 }
               }
@@ -271,16 +253,15 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
           }
 
         } catch (error) {
-          console.error(`  ❌ 전송 오류:`, error.message);
+          console.error(`   ❌ 전송 오류:`, error.message);
           totalFailed++;
-
           failureList.push({
             email: user.email || uid,
-            notifTitle: notification.title,
+            notifTitle,
             errors: [{ errorCode: error.code || 'SEND_ERROR', errorMsg: error.message }]
           });
           
-          // 오류 시 pushed 플래그 롤백
+          // 오류 시 pushed 플래그 롤백 (다음 실행 시 재시도)
           await db.ref(`notifications/${uid}/${notification.id}`).update({
             pushed: false,
             pushError: error.message,
@@ -296,36 +277,28 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
     console.log('\n' + '='.repeat(60));
     console.log('📊 전송 완료 결과:');
     console.log(`   👥 처리된 사용자: ${processedUsers}명`);
-    console.log(`   ⏭️  건너뛴 사용자: ${skippedUsers}명`);
+    console.log(`   ⏭️  FCM 토큰 없어 스킵: ${skippedNoToken}명`);
+    console.log(`   🔕 알림 비활성화로 스킵: ${skippedNotifsDisabled}명`);
     console.log(`   ✅ 성공: ${totalSent}건`);
     console.log(`   ❌ 실패: ${totalFailed}건`);
     console.log('='.repeat(60));
 
-    // ✅ 성공 이메일 목록
     if (successList.length > 0) {
       console.log('\n✅ 전송 성공 목록:');
       console.log('-'.repeat(60));
       successList.forEach((s, i) => {
-        console.log(`  ${i + 1}. ${s.email}`);
-        console.log(`     알림: "${s.notifTitle}"  |  성공 디바이스: ${s.successCount}개`);
+        console.log(`  ${i + 1}. ${s.email} → "${s.notifTitle}" (${s.successCount}개 디바이스)`);
       });
     }
 
-    // ❌ 실패 이메일 + 오류 목록
     if (failureList.length > 0) {
       console.log('\n❌ 전송 실패 목록:');
       console.log('-'.repeat(60));
       failureList.forEach((f, i) => {
-        console.log(`  ${i + 1}. ${f.email}`);
-        if (f.notifTitle) console.log(`     알림: "${f.notifTitle}"`);
-        f.errors.forEach(e => {
-          console.log(`     ⚠️  오류코드: ${e.errorCode}`);
-          console.log(`         오류내용: ${e.errorMsg}`);
-        });
+        console.log(`  ${i + 1}. ${f.email}${f.notifTitle ? ` → "${f.notifTitle}"` : ''}`);
+        f.errors.forEach(e => console.log(`     ⚠️ ${e.errorCode}: ${e.errorMsg}`));
       });
     }
-
-    console.log('\n' + '='.repeat(60));
 
     if (totalSent === 0 && processedUsers === 0) {
       console.log('ℹ️  전송할 알림이 없습니다.');
@@ -339,7 +312,7 @@ console.log(`⏱️ pushed=false 알림 전체 처리 (시간 제한 없음)`);
   }
 }
 
-// ⭐ [수정] 오래된 알림 정리 - 30일로 확장 (7일은 너무 짧음)
+// 오래된 알림 정리 (30일)
 async function cleanOldNotifications() {
   console.log('\n🧹 오래된 알림 정리 중...');
   
@@ -366,7 +339,7 @@ async function cleanOldNotifications() {
     }
     
     if (deletedCount > 0) {
-      console.log(`✅ ${deletedCount}개의 오래된 알림 삭제 완료 (30일 이상)`);
+      console.log(`✅ ${deletedCount}개 오래된 알림 삭제 완료 (30일 이상)`);
     } else {
       console.log('ℹ️  삭제할 오래된 알림 없음');
     }
@@ -380,7 +353,6 @@ async function cleanOldNotifications() {
 sendNotifications()
   .then(() => {
     console.log('\n✅ 작업 완료! (5분 간격 자동 실행)');
-    console.log('⏰ 다음 실행: 약 5분 후');
     process.exit(0);
   })
   .catch((error) => {
